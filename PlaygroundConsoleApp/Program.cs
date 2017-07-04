@@ -9,8 +9,50 @@ namespace PlaygroundConsoleApp
         static void Main(string[] args)
         {
             //ProofOfConceptXmlEncryption();
-            ProofOfConceptXmlSigned();
+            //ProofOfConceptXmlSigned();
+            ProofOfConceptXmlSignedAndEncryption();
             Console.ReadLine();
+        }
+
+        private static void ProofOfConceptXmlSignedAndEncryption()
+        {
+            const string keyName = "External_Cert_GCIS";
+            var xmlEncryption = new XmlEncryption.XmlEncryption();
+
+            var cspParams = new CspParameters { KeyContainerName = "XML_DSIG_RSA_KEY" };
+            var rsaKey = new RSACryptoServiceProvider(cspParams);
+            var xmlDoc = new XmlDocument { PreserveWhitespace = true };
+            xmlDoc.Load("test.xml");
+
+            var signedContent = xmlEncryption.Sign(xmlDoc.OuterXml, rsaKey);
+            var xmlSigned = new XmlDocument { PreserveWhitespace = true };
+            xmlSigned.LoadXml(signedContent);
+            XmlNode docNode = xmlSigned.CreateXmlDeclaration("1.0", "UTF-8", null);
+            xmlSigned.InsertBefore(docNode, xmlSigned.FirstChild);
+            xmlSigned.Save("test-signed.xml");
+            Console.WriteLine("XML file signed.");
+
+            var encryptedContent = xmlEncryption.Encrypt(xmlSigned.OuterXml, "Signature", rsaKey, keyName);
+            var xmlEncrypted = new XmlDocument { PreserveWhitespace = true };
+            xmlEncrypted.LoadXml(encryptedContent);
+            xmlEncrypted.Save("test-encryptedAndSigned.xml");
+
+            Console.WriteLine("Encrypted XML:");
+            Console.WriteLine();
+            Console.WriteLine(xmlEncrypted.OuterXml);
+
+            var decryptedContent = xmlEncryption.Decrypt(encryptedContent, rsaKey, keyName);
+            var xmlDecrypted = new XmlDocument { PreserveWhitespace = true };
+            xmlDecrypted.LoadXml(decryptedContent);
+            xmlDecrypted.Save("test-decryptedAndSigned.xml");
+
+            Console.WriteLine();
+            Console.WriteLine("Decrypted XML:");
+            Console.WriteLine();
+            Console.WriteLine(xmlDoc.OuterXml);
+            
+            var valid = xmlEncryption.VerifyXml(signedContent, rsaKey) ? "valid" : "invalid";
+            Console.WriteLine($"The signature is {valid}");
         }
 
         private static void ProofOfConceptXmlSigned()
