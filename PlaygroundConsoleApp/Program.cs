@@ -1,5 +1,8 @@
 ﻿using System;
+using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Xml;
 
 namespace PlaygroundConsoleApp
@@ -16,11 +19,17 @@ namespace PlaygroundConsoleApp
 
         private static void ProofOfConceptXmlSignedAndEncryption()
         {
+            var collection = new X509Certificate2Collection();
+            collection.Import(File.ReadAllBytes("NPPAutomationClient_enc.p12"), "password", X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet);
+
+            var x509Certificate2 = collection.Cast<X509Certificate2>()
+                .First(c => c.FriendlyName.Equals("NPPAutomationClient", StringComparison.InvariantCultureIgnoreCase));
+
+            var rsaKey = x509Certificate2.PrivateKey as RSACryptoServiceProvider;
+
             const string keyName = "External_Cert_GCIS";
             var xmlEncryption = new XmlEncryption.XmlEncryption();
-
-            var cspParams = new CspParameters { KeyContainerName = "XML_DSIG_RSA_KEY" };
-            var rsaKey = new RSACryptoServiceProvider(cspParams);
+            
             var xmlDoc = new XmlDocument { PreserveWhitespace = true };
             xmlDoc.Load("test.xml");
 
@@ -57,13 +66,21 @@ namespace PlaygroundConsoleApp
 
         private static void ProofOfConceptXmlSigned()
         {
-            var cspParams2 = new CspParameters { KeyContainerName = "XML_ENC_RSA_KEY" };
-            var rsaKey2 = new RSACryptoServiceProvider(cspParams2);
+            var collection = new X509Certificate2Collection();
+            collection.Import(File.ReadAllBytes("NPPAutomationClient_enc.p12"), "password", X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet);
+
+            var x509Certificate2 = collection.Cast<X509Certificate2>()
+                .First(c => c.FriendlyName.Equals("NPPAutomationClient", StringComparison.InvariantCultureIgnoreCase));
+
+            var rsaKey = x509Certificate2.PrivateKey as RSACryptoServiceProvider;
 
             var xmlEncryption = new XmlEncryption.XmlEncryption();
 
+
             var cspParams = new CspParameters {KeyContainerName = "XML_DSIG_RSA_KEY"};
-            var rsaKey = new RSACryptoServiceProvider(cspParams);
+            //This variable is use to proof that Verification works, if we try to verify with this rasKey2 var it will fail
+            var rsaKey2 = new RSACryptoServiceProvider(cspParams);
+
             var xmlDoc = new XmlDocument {PreserveWhitespace = true};
             xmlDoc.Load("test.xml");
 
@@ -74,12 +91,23 @@ namespace PlaygroundConsoleApp
             xmlSigned.InsertBefore(docNode, xmlSigned.FirstChild);
             Console.WriteLine("XML file signed.");
             xmlSigned.Save("test-signed.xml");
-            var valid = xmlEncryption.VerifyXml(signedContent, rsaKey2) ? "valid" : "invalid";
+            var valid = xmlEncryption.VerifyXml(signedContent, rsaKey) ? "valid" : "invalid";
             Console.WriteLine($"The signature is {valid}");
         }
 
         private static void ProofOfConceptXmlEncryption()
         {
+            var collection = new X509Certificate2Collection();
+            collection.Import(File.ReadAllBytes("NPPAutomationClient_enc.p12"), "password", X509KeyStorageFlags.Exportable | X509KeyStorageFlags.MachineKeySet);
+
+            var x509Certificate2 = collection.Cast<X509Certificate2>()
+                .First(c => c.FriendlyName.Equals("NPPAutomationClient", StringComparison.InvariantCultureIgnoreCase));
+
+            var rsaKey = x509Certificate2.PrivateKey as RSACryptoServiceProvider;
+
+
+
+
             var xmlEncryption = new XmlEncryption.XmlEncryption();
 
             const string keyName = "External_Cert_GCIS";
@@ -94,10 +122,6 @@ namespace PlaygroundConsoleApp
                 Console.WriteLine(e.Message);
             }
 
-            // Create a new CspParameters object to specify a key container.
-            var cspParams = new CspParameters { KeyContainerName = "XML_ENC_RSA_KEY" };
-            // Create a new RSA key and save it in the container.  This key will encrypt a symmetric key, which will then be encryped in the XML document.
-            var rsaKey = new RSACryptoServiceProvider(cspParams);
             try
             {
                 // Encrypt the "creditcard" element.

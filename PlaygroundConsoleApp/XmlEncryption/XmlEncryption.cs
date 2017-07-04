@@ -1,9 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Deployment.Internal.CodeSigning;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Cryptography.Xml;
 using System.Xml;
+using System.Xml.Linq;
 
 namespace PlaygroundConsoleApp.XmlEncryption
 {
@@ -51,22 +54,13 @@ namespace PlaygroundConsoleApp.XmlEncryption
                 // Replace the element from the original XmlDocument object with the EncryptedData element.
                 EncryptedXml.ReplaceElement(elementToEncrypt, encryptedData, false);
 
-                //var prefixXmlns = "xenc";
-                //var xmlns = "http://www.w3.org/2001/04/xmlenc#";
-                //var xmlWithPrefix = new XmlDocument{PreserveWhitespace = true};
+                //var prefixXmlnsXenc = "xenc";
+                //var xmlnsXenc = "http://www.w3.org/2001/04/xmlenc#";
+                //var xmlWithPrefix = new XmlDocument { PreserveWhitespace = true };
                 //var xElement = XElement.Parse(xml.OuterXml);
-                //var xmlElement = xmlWithPrefix.CreateElement(prefixXmlns, xElement.Name.LocalName, xmlns);
-                //foreach (var element in xElement.Elements())
-                //{
-                //    XmlElement node;
-                //    if (element.Name.ToString().Contains($"{{{xmlns}}}"))
-                //    {
-                //        node = xmlWithPrefix.CreateElement(prefixXmlns, element.Name.ToString().Replace($"{{{xmlns}}}", ""), xmlns);
-                //        node.InnerText = element.Value;
-                //        xmlElement.AppendChild(node);
-                //    }
-
-                //}
+                //var xmlElement = xmlWithPrefix.CreateElement(prefixXmlnsXenc, xElement.Name.LocalName, xmlnsXenc);
+                //AddAttributesToElement(xmlElement, xElement);
+                //ProcessElement(xmlWithPrefix, xElement.Elements(), xmlElement);
                 //xmlWithPrefix.AppendChild(xmlElement);
                 //return xmlWithPrefix.OuterXml;
 
@@ -79,6 +73,56 @@ namespace PlaygroundConsoleApp.XmlEncryption
             finally
             {
                 sessionKey?.Clear();
+            }
+        }
+
+        private void ProcessElement(XmlDocument xmlWithPrefix, IEnumerable<XElement> elements, XmlElement xmlElement)
+        {
+            var prefixXmlnsXenc = "xenc";
+            var xmlnsXenc = "http://www.w3.org/2001/04/xmlenc#";
+            var prefixXmlnsDsig = "dsig";
+            var xmlnsDsig = "http://www.w3.org/2000/09/xmldsig#";
+            foreach (var element in elements)
+            {
+                XmlElement node;
+                if (element.Name.ToString().Contains($"{{{xmlnsXenc}}}"))
+                {
+                    node = xmlWithPrefix.CreateElement(prefixXmlnsXenc, element.Name.ToString().Replace($"{{{xmlnsXenc}}}", ""), xmlnsXenc);
+                    AddAttributesToElement(node, element);
+                    if (element.HasElements)
+                    {
+                        ProcessElement(xmlWithPrefix, element.Elements(), xmlElement);
+                    }
+                    node.InnerText = element.Value;
+                    xmlElement.AppendChild(node);
+                }
+                if (element.Name.ToString().Contains($"{{{xmlnsDsig}}}"))
+                {
+                    node = xmlWithPrefix.CreateElement(prefixXmlnsDsig, element.Name.ToString().Replace($"{{{xmlnsDsig}}}", ""), xmlnsDsig);
+                    AddAttributesToElement(node, element);
+                    if (element.HasElements)
+                    {
+                        ProcessElement(xmlWithPrefix, element.Elements(), xmlElement);
+                    }
+                    node.InnerText = element.Value;
+                    xmlElement.AppendChild(node);
+                }
+
+                //var xmlns = element.Attributes().Where(x => x.IsNamespaceDeclaration)?.First().Value;
+                //var node = xmlWithPrefix.CreateElement(prefixXmlnsXenc, element.Name.ToString().Replace($"{{{xmlns}}}", ""), xmlns);
+
+            }
+
+        }
+
+        private void AddAttributesToElement(XmlElement xmlElement, XElement xElement)
+        {
+            foreach (var xAttribute in xElement.Attributes())
+            {
+                if (!xAttribute.IsNamespaceDeclaration)
+                {
+                    xmlElement.SetAttribute(xAttribute.Name.LocalName, xAttribute.Value);
+                }
             }
         }
 
@@ -105,7 +149,7 @@ namespace PlaygroundConsoleApp.XmlEncryption
             }
 
             var signedXml = new SignedXml(xml) {SigningKey = rsaKey};
-            signedXml.SignedInfo.SignatureMethod = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
+            //signedXml.SignedInfo.SignatureMethod = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
 
             var dataObject = new DataObject(Guid.NewGuid().ToString(), "", "", xml.DocumentElement);
             signedXml.AddObject(dataObject);
