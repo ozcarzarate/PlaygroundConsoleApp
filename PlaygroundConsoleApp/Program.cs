@@ -1,16 +1,46 @@
 ﻿using System;
 using System.Security.Cryptography;
-using System.Security.Cryptography.Xml;
 using System.Xml;
-using System.Xml.Linq;
 
 namespace PlaygroundConsoleApp
 {
     class Program
     {
-        private const string KeyName = "External_Cert_GCIS";
         static void Main(string[] args)
         {
+            //ProofOfConceptXmlEncryption();
+            ProofOfConceptXmlSigned();
+            Console.ReadLine();
+        }
+
+        private static void ProofOfConceptXmlSigned()
+        {
+            var cspParams2 = new CspParameters { KeyContainerName = "XML_ENC_RSA_KEY" };
+            var rsaKey2 = new RSACryptoServiceProvider(cspParams2);
+
+            var xmlEncryption = new XmlEncryption.XmlEncryption();
+
+            var cspParams = new CspParameters {KeyContainerName = "XML_DSIG_RSA_KEY"};
+            var rsaKey = new RSACryptoServiceProvider(cspParams);
+            var xmlDoc = new XmlDocument {PreserveWhitespace = true};
+            xmlDoc.Load("test.xml");
+
+            var signedContent = xmlEncryption.Sign(xmlDoc.OuterXml, rsaKey);
+            var xmlSigned = new XmlDocument { PreserveWhitespace = true };
+            xmlSigned.LoadXml(signedContent);
+            XmlNode docNode = xmlSigned.CreateXmlDeclaration("1.0", "UTF-8", null);
+            xmlSigned.InsertBefore(docNode, xmlSigned.FirstChild);
+            Console.WriteLine("XML file signed.");
+            xmlSigned.Save("test-signed.xml");
+            var valid = xmlEncryption.VerifyXml(signedContent, rsaKey2) ? "valid" : "invalid";
+            Console.WriteLine($"The signature is {valid}");
+        }
+
+        private static void ProofOfConceptXmlEncryption()
+        {
+            var xmlEncryption = new XmlEncryption.XmlEncryption();
+
+            const string keyName = "External_Cert_GCIS";
             var xmlDoc = new XmlDocument();
             try
             {
@@ -23,15 +53,14 @@ namespace PlaygroundConsoleApp
             }
 
             // Create a new CspParameters object to specify a key container.
-            var cspParams = new CspParameters {KeyContainerName = "XML_ENC_RSA_KEY"};
+            var cspParams = new CspParameters { KeyContainerName = "XML_ENC_RSA_KEY" };
             // Create a new RSA key and save it in the container.  This key will encrypt a symmetric key, which will then be encryped in the XML document.
             var rsaKey = new RSACryptoServiceProvider(cspParams);
             try
             {
                 // Encrypt the "creditcard" element.
-                var encryptedContent = Encrypt(xmlDoc.OuterXml, "creditcard", rsaKey, KeyName);
-                var xmlEncrypted = new XmlDocument();
-                xmlEncrypted.PreserveWhitespace = true;
+                var encryptedContent = xmlEncryption.Encrypt(xmlDoc.OuterXml, "creditcard", rsaKey, keyName);
+                var xmlEncrypted = new XmlDocument {PreserveWhitespace = true};
                 xmlEncrypted.LoadXml(encryptedContent);
 
                 XmlNode docNode = xmlEncrypted.CreateXmlDeclaration("1.0", "UTF-8", null);
@@ -45,9 +74,8 @@ namespace PlaygroundConsoleApp
                 Console.WriteLine();
                 Console.WriteLine(xmlEncrypted.OuterXml);
                 //xmlDoc.Load(@"D:\Temp\NPP-1561-Xml-Encryption\Request_RecAddRq_inc_BusMsg_Pacs008_signed_encrypted.xml");
-                var decryptedContent = Decrypt(encryptedContent, rsaKey, KeyName);
-                var xmlDecrypted = new XmlDocument();
-                xmlDecrypted.PreserveWhitespace = true;
+                var decryptedContent = xmlEncryption.Decrypt(encryptedContent, rsaKey, keyName);
+                var xmlDecrypted = new XmlDocument {PreserveWhitespace = true};
                 xmlDecrypted.LoadXml(decryptedContent);
                 xmlDecrypted.Save("test-decrypted.xml");
 
@@ -65,101 +93,6 @@ namespace PlaygroundConsoleApp
             {
                 rsaKey.Clear();
             }
-
-
-            Console.ReadLine();
         }
-
-        public static string Encrypt(string xmlDocument, string elementToEncryptXml, RSA algorith, string keyName)
-        {
-            var xml = new XmlDocument {PreserveWhitespace = true};
-            xml.LoadXml(xmlDocument);
-            var elementToEncrypt = (XmlElement)xml.GetElementsByTagName(elementToEncryptXml)[0];
-            SymmetricAlgorithm sessionKey = null;
-            try
-            {
-                sessionKey = new RijndaelManaged { KeySize = 256 };
-                // sessionKey = new TripleDESCryptoServiceProvider();
-                // Create a new instance of the EncryptedXml class and use it to encrypt the XmlElement with the a new random symmetric key.
-                var encryptedXml = new EncryptedXml();
-                var encryptedElement = encryptedXml.EncryptData(elementToEncrypt, sessionKey, false);
-
-                // Construct an EncryptedData object and populate it with the desired encryption information.
-                var encryptedData = new EncryptedData
-                {
-                    Type = EncryptedXml.XmlEncElementUrl,
-                    //EncryptionMethod = new EncryptionMethod(EncryptedXml.XmlEncTripleDESUrl),
-                    EncryptionMethod = new EncryptionMethod(EncryptedXml.XmlEncAES256Url)
-                };
-
-                // Create an EncryptionMethod element so that the receiver knows which algorithm to use for decryption.
-                // Encrypt the session key and add it to an EncryptedKey element.
-                var encryptedKey = new EncryptedKey();
-                var keyEncrypted = EncryptedXml.EncryptKey(sessionKey.Key, algorith, false);
-                encryptedKey.CipherData = new CipherData(keyEncrypted);
-                encryptedKey.EncryptionMethod = new EncryptionMethod(EncryptedXml.XmlEncRSA15Url);
-                encryptedKey.Recipient = $"name:{keyName}";
-                // Add the encrypted key to the EncryptedData object.
-                encryptedData.KeyInfo.AddClause(new KeyInfoEncryptedKey(encryptedKey));
-
-                // Set the KeyInfo element to specify the name of the RSA key. 
-                var keyInfoName = new KeyInfoName {Value = keyName};
-                encryptedKey.KeyInfo.AddClause(keyInfoName);
-                
-                // Add the encrypted element data to the EncryptedData object.
-                encryptedData.CipherData.CipherValue = encryptedElement;
-                
-                // Replace the element from the original XmlDocument object with the EncryptedData element.
-                EncryptedXml.ReplaceElement(elementToEncrypt, encryptedData, false);
-                
-                //var prefixXmlns = "xenc";
-                //var xmlns = "http://www.w3.org/2001/04/xmlenc#";
-                //var xmlWithPrefix = new XmlDocument{PreserveWhitespace = true};
-                //var xElement = XElement.Parse(xml.OuterXml);
-                //var xmlElement = xmlWithPrefix.CreateElement(prefixXmlns, xElement.Name.LocalName, xmlns);
-                //foreach (var element in xElement.Elements())
-                //{
-                //    XmlElement node;
-                //    if (element.Name.ToString().Contains($"{{{xmlns}}}"))
-                //    {
-                //        node = xmlWithPrefix.CreateElement(prefixXmlns, element.Name.ToString().Replace($"{{{xmlns}}}", ""), xmlns);
-                //        node.InnerText = element.Value;
-                //        xmlElement.AppendChild(node);
-                //    }
-                    
-                //}
-                //xmlWithPrefix.AppendChild(xmlElement);
-                //return xmlWithPrefix.OuterXml;
-
-                return xml.OuterXml;
-            }
-            catch (Exception e)
-            {
-                throw e;
-            }
-            finally
-            {
-                sessionKey?.Clear();
-            }
-
-        }
-
-        public static string Decrypt(string encryptedContent, RSA algorith, string keyName)
-        {
-            var xmlEncrypteDocument = new XmlDocument();
-            xmlEncrypteDocument.LoadXml(encryptedContent);
-
-            // Create a new EncryptedXml object.
-            var encryptedXml = new EncryptedXml(xmlEncrypteDocument);
-
-            // Add a key-name mapping. This method can only decrypt documents that present the specified key name.
-            encryptedXml.AddKeyNameMapping(keyName, algorith);
-
-            // Decrypt the element.
-            encryptedXml.DecryptDocument();
-
-            return xmlEncrypteDocument.OuterXml;
-        }
-
     }
 }
