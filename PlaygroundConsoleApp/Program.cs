@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -11,10 +12,39 @@ namespace PlaygroundConsoleApp
     {
         static void Main(string[] args)
         {
+
+            Id22CharacterLong();
+
+
+
             //ProofOfConceptXmlEncryption();
             //ProofOfConceptXmlSigned();
-            ProofOfConceptXmlSignedAndEncryption();
+            //ProofOfConceptXmlSignedAndEncryption();
             Console.ReadLine();
+        }
+
+
+        private static void Id22CharacterLong()
+        {
+            for (var i = 0; i < 10000000; i++)
+            {
+                var original = Guid.NewGuid();
+                var toByteArray = original.ToByteArray();
+                var toBase64String = Convert.ToBase64String(toByteArray).Substring(0, 22);
+
+                var backToByteArray = Convert.FromBase64String($"{toBase64String}==");
+                var backToOriginal = new Guid(backToByteArray);
+
+                if (original != backToOriginal)
+                {
+                    Debugger.Break();
+                    throw new Exception();
+                }
+                else
+                {
+                    Console.WriteLine(toBase64String);
+                }
+            }
         }
 
         private static void ProofOfConceptXmlSignedAndEncryption()
@@ -27,9 +57,8 @@ namespace PlaygroundConsoleApp
 
             var rsaKey = x509Certificate2.PrivateKey as RSACryptoServiceProvider;
 
-            const string keyName = "External_Cert_GCIS";
             var xmlEncryption = new XmlEncryption.XmlEncryption();
-            
+
             var xmlDoc = new XmlDocument { PreserveWhitespace = true };
             xmlDoc.Load("test.xml");
 
@@ -41,7 +70,7 @@ namespace PlaygroundConsoleApp
             xmlSigned.Save("test-signed.xml");
             Console.WriteLine("XML file signed.");
 
-            var encryptedContent = xmlEncryption.Encrypt(xmlSigned.OuterXml, "Signature", rsaKey, keyName);
+            var encryptedContent = xmlEncryption.Encrypt(xmlSigned.OuterXml, rsaKey);
             var xmlEncrypted = new XmlDocument { PreserveWhitespace = true };
             xmlEncrypted.LoadXml(encryptedContent);
             xmlEncrypted.Save("test-encryptedAndSigned.xml");
@@ -50,7 +79,7 @@ namespace PlaygroundConsoleApp
             Console.WriteLine();
             Console.WriteLine(xmlEncrypted.OuterXml);
 
-            var decryptedContent = xmlEncryption.Decrypt(encryptedContent, rsaKey, keyName);
+            var decryptedContent = xmlEncryption.Decrypt(encryptedContent, rsaKey);
             var xmlDecrypted = new XmlDocument { PreserveWhitespace = true };
             xmlDecrypted.LoadXml(decryptedContent);
             xmlDecrypted.Save("test-decryptedAndSigned.xml");
@@ -59,9 +88,8 @@ namespace PlaygroundConsoleApp
             Console.WriteLine("Decrypted XML:");
             Console.WriteLine();
             Console.WriteLine(xmlDoc.OuterXml);
-            
-            var valid = xmlEncryption.VerifyXml(signedContent, rsaKey) ? "valid" : "invalid";
-            Console.WriteLine($"The signature is {valid}");
+
+            Console.WriteLine($"The signature is {xmlEncryption.VerifyXml(signedContent, rsaKey) }");
         }
 
         private static void ProofOfConceptXmlSigned()
@@ -77,11 +105,11 @@ namespace PlaygroundConsoleApp
             var xmlEncryption = new XmlEncryption.XmlEncryption();
 
 
-            var cspParams = new CspParameters {KeyContainerName = "XML_DSIG_RSA_KEY"};
+            var cspParams = new CspParameters { KeyContainerName = "XML_DSIG_RSA_KEY" };
             //This variable is use to proof that Verification works, if we try to verify with this rasKey2 var it will fail
             var rsaKey2 = new RSACryptoServiceProvider(cspParams);
 
-            var xmlDoc = new XmlDocument {PreserveWhitespace = true};
+            var xmlDoc = new XmlDocument { PreserveWhitespace = true };
             xmlDoc.Load("test.xml");
 
             var signedContent = xmlEncryption.Sign(xmlDoc.OuterXml, rsaKey);
@@ -91,8 +119,7 @@ namespace PlaygroundConsoleApp
             xmlSigned.InsertBefore(docNode, xmlSigned.FirstChild);
             Console.WriteLine("XML file signed.");
             xmlSigned.Save("test-signed.xml");
-            var valid = xmlEncryption.VerifyXml(signedContent, rsaKey) ? "valid" : "invalid";
-            Console.WriteLine($"The signature is {valid}");
+            Console.WriteLine($"The signature is {xmlEncryption.VerifyXml(signedContent, rsaKey)}");
         }
 
         private static void ProofOfConceptXmlEncryption()
@@ -105,12 +132,7 @@ namespace PlaygroundConsoleApp
 
             var rsaKey = x509Certificate2.PrivateKey as RSACryptoServiceProvider;
 
-
-
-
             var xmlEncryption = new XmlEncryption.XmlEncryption();
-
-            const string keyName = "External_Cert_GCIS";
             var xmlDoc = new XmlDocument();
             try
             {
@@ -125,8 +147,8 @@ namespace PlaygroundConsoleApp
             try
             {
                 // Encrypt the "creditcard" element.
-                var encryptedContent = xmlEncryption.Encrypt(xmlDoc.OuterXml, "creditcard", rsaKey, keyName);
-                var xmlEncrypted = new XmlDocument {PreserveWhitespace = true};
+                var encryptedContent = xmlEncryption.Encrypt(xmlDoc.OuterXml, rsaKey);
+                var xmlEncrypted = new XmlDocument { PreserveWhitespace = true };
                 xmlEncrypted.LoadXml(encryptedContent);
 
                 XmlNode docNode = xmlEncrypted.CreateXmlDeclaration("1.0", "UTF-8", null);
@@ -140,8 +162,8 @@ namespace PlaygroundConsoleApp
                 Console.WriteLine();
                 Console.WriteLine(xmlEncrypted.OuterXml);
                 //xmlDoc.Load(@"D:\Temp\NPP-1561-Xml-Encryption\Request_RecAddRq_inc_BusMsg_Pacs008_signed_encrypted.xml");
-                var decryptedContent = xmlEncryption.Decrypt(encryptedContent, rsaKey, keyName);
-                var xmlDecrypted = new XmlDocument {PreserveWhitespace = true};
+                var decryptedContent = xmlEncryption.Decrypt(encryptedContent, rsaKey);
+                var xmlDecrypted = new XmlDocument { PreserveWhitespace = true };
                 xmlDecrypted.LoadXml(decryptedContent);
                 xmlDecrypted.Save("test-decrypted.xml");
 

@@ -12,11 +12,13 @@ namespace PlaygroundConsoleApp.XmlEncryption
 {
     public class XmlEncryption : IXmlEncryption
     {
-        public string Encrypt(string xmlDocument, string elementToEncryptXml, RSA rsaKey, string keyName)
+        private const string KeyName = "External_Cert_GCIS";
+        public string Encrypt(string xmlDocument, RSA rsaKey)
         {
             var xml = new XmlDocument { PreserveWhitespace = true };
             xml.LoadXml(xmlDocument);
-            var elementToEncrypt = (XmlElement)xml.GetElementsByTagName(elementToEncryptXml)[0];
+            
+            var elementToEncrypt = (XmlElement)xml.GetElementsByTagName(xml.DocumentElement.Name)[0];
             SymmetricAlgorithm sessionKey = null;
             try
             {
@@ -40,12 +42,12 @@ namespace PlaygroundConsoleApp.XmlEncryption
                 var keyEncrypted = EncryptedXml.EncryptKey(sessionKey.Key, rsaKey, false);
                 encryptedKey.CipherData = new CipherData(keyEncrypted);
                 encryptedKey.EncryptionMethod = new EncryptionMethod(EncryptedXml.XmlEncRSA15Url);
-                encryptedKey.Recipient = $"name:{keyName}";
+                encryptedKey.Recipient = $"name:{KeyName}";
                 // Add the encrypted key to the EncryptedData object.
                 encryptedData.KeyInfo.AddClause(new KeyInfoEncryptedKey(encryptedKey));
 
                 // Set the KeyInfo element to specify the name of the RSA key. 
-                var keyInfoName = new KeyInfoName { Value = keyName };
+                var keyInfoName = new KeyInfoName { Value = KeyName };
                 encryptedKey.KeyInfo.AddClause(keyInfoName);
 
                 // Add the encrypted element data to the EncryptedData object.
@@ -126,13 +128,13 @@ namespace PlaygroundConsoleApp.XmlEncryption
             }
         }
 
-        public string Decrypt(string encryptedContent, RSA rsaKey, string keyName)
+        public string Decrypt(string encryptedContent, RSA rsaKey)
         {
             var xmlEncrypteDocument = new XmlDocument();
             xmlEncrypteDocument.LoadXml(encryptedContent);
 
             var encryptedXml = new EncryptedXml(xmlEncrypteDocument);
-            encryptedXml.AddKeyNameMapping(keyName, rsaKey);
+            encryptedXml.AddKeyNameMapping(KeyName, rsaKey);
             encryptedXml.DecryptDocument();
 
             return xmlEncrypteDocument.OuterXml;
@@ -167,8 +169,6 @@ namespace PlaygroundConsoleApp.XmlEncryption
             keyInfoX509Data.AddCertificate(x509Certificate2);
             keyInfo.AddClause(keyInfoX509Data);
             keyInfo.LoadXml(x509Data.GetXml());
-            signedXml.KeyInfo = keyInfo;
-
             var reference = new Reference
             {
                 Uri = $"#{dataObject.Id}",
@@ -184,7 +184,7 @@ namespace PlaygroundConsoleApp.XmlEncryption
             return xml.ImportNode(xmlDigitalSignature, true).OuterXml;
         }
 
-        public bool VerifyXml(string xmlDocument, RSA rsaKey)
+        public string VerifyXml(string xmlDocument, RSA rsaKey)
         {
             var xml = new XmlDocument { PreserveWhitespace = true };
             xml.LoadXml(xmlDocument);
@@ -195,7 +195,15 @@ namespace PlaygroundConsoleApp.XmlEncryption
             }
             var signedXml = new SignedXml(xml) { SigningKey = rsaKey };
             signedXml.LoadXml((XmlElement) nodeList[0]);
-            return signedXml.CheckSignature(rsaKey);
+            if (signedXml.CheckSignature(rsaKey))
+            {
+                var decryptedContent = ((XmlElement)nodeList[0]).GetElementsByTagName("Object")[0].FirstChild.OuterXml.Replace(@" xmlns=""""", "");
+                return decryptedContent;
+            }
+            else
+            {
+                return null;
+            }
         }
     }
 }
